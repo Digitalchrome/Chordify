@@ -105,31 +105,46 @@ export const useAuthStore = create<AuthState>((set) => ({
   signUp: async (email: string, password: string) => {
     try {
       logDebug('Starting fresh signup process');
+      logDebug('Signup attempt for email:', email);
 
       // First, try to sign out any existing session
       await supabase.auth.signOut();
+      
+      const redirectUrl = `${window.location.origin}/login`;
+      logDebug('Redirect URL:', redirectUrl);
       
       // Attempt the signup
       const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: redirectUrl,
           data: {
             timestamp: new Date().toISOString(),
           },
         },
       });
 
-      logDebug('Sign up result:', { success: !error, hasUser: !!data?.user });
+      logDebug('Sign up response:', { 
+        success: !error, 
+        hasUser: !!data?.user,
+        userId: data?.user?.id,
+        identities: data?.user?.identities,
+        emailConfirmed: data?.user?.email_confirmed_at,
+        userMetadata: data?.user?.user_metadata
+      });
 
       if (error) {
         logDebug('Sign up error:', error);
         if (error.message.includes('already registered')) {
+          logDebug('User already registered, attempting to resend verification');
           // Try to resend verification email
           const { error: resendError } = await supabase.auth.resend({
             type: 'signup',
             email: email.toLowerCase(),
+            options: {
+              emailRedirectTo: redirectUrl,
+            },
           });
 
           if (resendError) {
@@ -142,7 +157,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
           return {
             success: true,
-            message: 'If this email is not verified, a new verification email has been sent. Please check your inbox.',
+            message: 'If this email is not verified, a new verification email has been sent. Please check your inbox and spam folder.',
           };
         }
 
@@ -154,15 +169,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       // Check if we got a user back
       if (!data?.user) {
+        logDebug('No user data returned from signup');
         return {
           success: false,
           message: 'No user was created. Please try again.',
         };
       }
 
+      // Check if confirmation email was sent
+      if (!data.user.email_confirmed_at) {
+        logDebug('Email confirmation needed');
+        return {
+          success: true,
+          message: 'Please check your email (including spam folder) to verify your account before signing in. The verification email should arrive within a few minutes.',
+        };
+      }
+
+      logDebug('Signup successful and email already confirmed');
       return {
         success: true,
-        message: 'Please check your email to verify your account before signing in. The verification email should arrive within a few minutes.',
+        message: 'Account created successfully! You can now sign in.',
       };
     } catch (error) {
       logDebug('Unexpected error during sign up:', error);
