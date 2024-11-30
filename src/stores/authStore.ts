@@ -110,8 +110,35 @@ export const useAuthStore = create<AuthState>((set) => ({
       // First, try to sign out any existing session
       await supabase.auth.signOut();
       
-      const redirectUrl = `${window.location.origin}/login`;
+      const redirectUrl = new URL('/login', window.location.origin).toString();
       logDebug('Redirect URL:', redirectUrl);
+      
+      // Check if email is already registered
+      const { data: { user: existingUser }, error: checkError } = await supabase.auth.getUser();
+      
+      if (existingUser) {
+        logDebug('User already exists, attempting to resend verification');
+        const { error: resendError } = await supabase.auth.resend({
+          type: 'signup',
+          email: email.toLowerCase(),
+          options: {
+            emailRedirectTo: redirectUrl,
+          },
+        });
+
+        if (resendError) {
+          logDebug('Error resending verification:', resendError);
+          return {
+            success: false,
+            message: 'Error sending verification email. Please try again or contact support.',
+          };
+        }
+
+        return {
+          success: true,
+          message: 'A new verification email has been sent. Please check your inbox and spam folder.',
+        };
+      }
       
       // Attempt the signup
       const { data, error } = await supabase.auth.signUp({
@@ -136,34 +163,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       if (error) {
         logDebug('Sign up error:', error);
-        if (error.message.includes('already registered')) {
-          logDebug('User already registered, attempting to resend verification');
-          // Try to resend verification email
-          const { error: resendError } = await supabase.auth.resend({
-            type: 'signup',
-            email: email.toLowerCase(),
-            options: {
-              emailRedirectTo: redirectUrl,
-            },
-          });
-
-          if (resendError) {
-            logDebug('Error resending verification:', resendError);
-            return {
-              success: false,
-              message: 'This email is already registered. Please try signing in or reset your password if needed.',
-            };
-          }
-
+        
+        // Handle rate limiting
+        if (error.message.includes('rate limit')) {
           return {
-            success: true,
-            message: 'If this email is not verified, a new verification email has been sent. Please check your inbox and spam folder.',
+            success: false,
+            message: 'Too many attempts. Please wait a few minutes and try again.',
+          };
+        }
+
+        // Handle duplicate email
+        if (error.message.includes('already registered')) {
+          return {
+            success: false,
+            message: 'This email is already registered. Please try signing in or use the reset password option.',
           };
         }
 
         return {
           success: false,
-          message: error.message,
+          message: `Signup failed: ${error.message}`,
         };
       }
 
@@ -172,29 +191,28 @@ export const useAuthStore = create<AuthState>((set) => ({
         logDebug('No user data returned from signup');
         return {
           success: false,
-          message: 'No user was created. Please try again.',
+          message: 'Account creation failed. Please try again.',
         };
       }
 
-      // Check if confirmation email was sent
-      if (!data.user.email_confirmed_at) {
-        logDebug('Email confirmation needed');
-        return {
-          success: true,
-          message: 'Please check your email (including spam folder) to verify your account before signing in. The verification email should arrive within a few minutes.',
-        };
-      }
+      // Send another verification email just in case
+      await supabase.auth.resend({
+        type: 'signup',
+        email: email.toLowerCase(),
+        options: {
+          emailRedirectTo: redirectUrl,
+        },
+      });
 
-      logDebug('Signup successful and email already confirmed');
       return {
         success: true,
-        message: 'Account created successfully! You can now sign in.',
+        message: 'Account created! Please check your email (including spam folder) to verify your account. The verification email should arrive within a few minutes.',
       };
     } catch (error) {
       logDebug('Unexpected error during sign up:', error);
       return {
         success: false,
-        message: 'An unexpected error occurred during sign up.',
+        message: 'An unexpected error occurred. Please try again later.',
       };
     }
   },
