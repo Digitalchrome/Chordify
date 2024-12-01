@@ -22,37 +22,36 @@ export const useAuthStore = create<AuthState>((set) => ({
         password,
       });
 
-      if (error) {
-        return { success: false, message: error.message };
-      }
-
+      if (error) throw error;
       set({ session: data.session });
       return { success: true };
-    } catch (error) {
-      return { success: false, message: 'Failed to sign in' };
+    } catch (error: any) {
+      return { success: false, message: error.message };
     }
   },
 
   signUp: async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // First, try to sign up
+      const { error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
       });
 
-      if (error) {
-        return { success: false, message: error.message };
-      }
+      if (signUpError) throw signUpError;
 
-      // Auto-sign in after signup
-      if (data.session) {
-        set({ session: data.session });
-        return { success: true, message: 'Account created successfully!' };
-      }
+      // If signup successful, immediately sign in
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-      return { success: false, message: 'Failed to create account' };
-    } catch (error) {
-      return { success: false, message: 'Failed to sign up' };
+      if (signInError) throw signInError;
+
+      set({ session: signInData.session });
+      return { success: true, message: 'Account created and logged in successfully!' };
+    } catch (error: any) {
+      return { success: false, message: error.message };
     }
   },
 
@@ -64,7 +63,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   setSession: (session) => set({ session }),
 }));
 
-// Listen for auth changes
 supabase.auth.onAuthStateChange((_, session) => {
   useAuthStore.getState().setSession(session);
 });
