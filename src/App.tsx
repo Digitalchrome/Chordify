@@ -1,4 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import * as Tone from 'tone';
+import { Music, Book, Layers, RefreshCw, Settings } from 'lucide-react';
+
+// Components
 import { ChordDisplay } from './components/ChordDisplay';
 import { GeneratorControls } from './components/GeneratorControls';
 import { ProgressionHistory } from './components/ProgressionHistory';
@@ -9,21 +14,23 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { ChordVoicingLibrary } from './components/ChordVoicingLibrary';
 import { AdvancedScaleAnalysis } from './components/AdvancedScaleAnalysis';
 import { ProgressionVariationEngine } from './components/ProgressionVariationEngine';
-import { useDarkMode } from './hooks/useDarkMode';
-import { generateProgression } from './utils/chordGenerator';
-import { analyzeChordFunction, getChordSubstitutions } from './utils/chordAnalysis';
-import { ChordMode, ProgressionLength, ChordProgression, ScaleType, ChordFunction } from './types/music';
-import { audioEngine } from './utils/audioEngine';
-import { Music, Book, Layers, RefreshCw, Settings } from 'lucide-react';
 import { ChordVoicingCustomizer } from './components/ChordVoicingCustomizer';
 import { VoicingPresetManager } from './components/VoicingPresetManager';
-import { useVoicingStore } from './stores/voicingStore';
-import * as Tone from 'tone';
 import { AuthProvider } from './components/auth/AuthProvider';
 import { LoginForm } from './components/auth/LoginForm';
 import { SignUpForm } from './components/auth/SignUpForm';
+
+// Hooks and Stores
+import { useDarkMode } from './hooks/useDarkMode';
+import { useVoicingStore } from './stores/voicingStore';
 import { useAuthStore } from './stores/authStore';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+
+// Utils and Types
+import { generateProgression } from './utils/chordGenerator';
+import { analyzeChordFunction, getChordSubstitutions } from './utils/chordAnalysis';
+import { audioEngine } from './utils/audioEngine';
+import { supabase } from './lib/supabase';
+import type { ChordMode, ProgressionLength, ChordProgression, ScaleType, ChordFunction } from './types/music';
 
 function App() {
   const [isDark, setIsDark] = useDarkMode();
@@ -31,15 +38,35 @@ function App() {
   const user = useAuthStore((state) => state.session?.user);
   const signOut = useAuthStore((state) => state.signOut);
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSignOut = async () => {
+  useEffect(() => {
+    // Check authentication status on mount
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setIsLoading(false);
+        if (!session && window.location.pathname !== '/signup') {
+          navigate('/login');
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+        setIsLoading(false);
+      }
+    };
+    checkAuth();
+  }, [navigate]);
+
+  const handleSignOut = useCallback(async () => {
     try {
       await signOut();
-      navigate('/login');
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Error signing out:', error);
+      // Still redirect to login on error to ensure user can't be stuck
+      navigate('/login', { replace: true });
     }
-  };
+  }, [signOut, navigate]);
 
   const [currentProgression, setCurrentProgression] = useState<ChordProgression>({
     chords: ['Cmaj7', 'Dm7', 'G7', 'Cmaj7'],
@@ -62,54 +89,61 @@ function App() {
   const [audioInitialized, setAudioInitialized] = useState(false);
   const { currentVoicings, setVoicing } = useVoicingStore();
 
-  const initializeAudio = async () => {
+  const initializeAudio = useCallback(async () => {
     if (!audioInitialized) {
       try {
         await Tone.start();
-        audioEngine.initializeAudioContext();
+        await audioEngine.initializeAudioContext();
         setAudioInitialized(true);
       } catch (error) {
-        console.warn('Failed to initialize audio:', error);
+        console.error('Failed to initialize audio:', error);
+        // Show a user-friendly error message
+        alert('Unable to initialize audio. Please check your browser settings and try again.');
       }
     }
-  };
+  }, [audioInitialized]);
 
-  const handleInitAudio = async () => {
+  const handleInitAudio = useCallback(async () => {
     await initializeAudio();
-  };
+  }, [initializeAudio]);
 
   useEffect(() => {
     const handleClick = () => {
       if (!audioInitialized) {
-        handleInitAudio();
+        handleInitAudio().catch(console.error);
       }
     };
 
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, [audioInitialized]);
+  }, [audioInitialized, handleInitAudio]);
 
-  const handleGenerate = async () => {
-    await initializeAudio();
-    const newProgression = generateProgression(
-      currentProgression.mode,
-      currentProgression.length,
-      {
-        selectedCadence,
-        useExtendedVoicings,
-        key: currentKey,
-        scale: currentScale,
-      }
-    );
-    
-    setCurrentProgression({
-      ...newProgression,
-      mode: currentProgression.mode,
-      length: currentProgression.length,
-    });
-    setHistory(prev => [newProgression, ...prev].slice(0, 10));
-    setSelectedChordIndex(-1);
-  };
+  const handleGenerate = useCallback(async () => {
+    try {
+      await initializeAudio();
+      const newProgression = generateProgression(
+        currentProgression.mode,
+        currentProgression.length,
+        {
+          selectedCadence,
+          useExtendedVoicings,
+          key: currentKey,
+          scale: currentScale,
+        }
+      );
+      
+      setCurrentProgression({
+        ...newProgression,
+        mode: currentProgression.mode,
+        length: currentProgression.length,
+      });
+      setHistory(prev => [newProgression, ...prev].slice(0, 10));
+      setSelectedChordIndex(-1);
+    } catch (error) {
+      console.error('Error generating progression:', error);
+      alert('Failed to generate progression. Please try again.');
+    }
+  }, [currentProgression, selectedCadence, useExtendedVoicings, currentKey, currentScale, initializeAudio]);
 
   const handleChordChange = (index: number, newChord: string) => {
     const newChords = [...currentProgression.chords];
@@ -183,7 +217,7 @@ function App() {
     );
   };
 
-  const MainApp = () => (
+  const MainApp = useMemo(() => () => (
     <div className={`min-h-screen ${isDark ? 'dark bg-gray-900' : 'bg-gray-100'}`}>
       <nav className="bg-gray-800 p-4">
         <div className="container mx-auto flex justify-between items-center">
@@ -386,22 +420,31 @@ function App() {
         )}
       </div>
     </div>
-  );
+  ), [isDark, user, handleSignOut, currentProgression, history, isPlaying, tempo, showVoicingLibrary, 
+      showScaleAnalysis, showVariationEngine, showVoicingCustomizer, audioInitialized, currentVoicings]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
   return (
     <AuthProvider>
       <Routes>
         <Route
           path="/login"
-          element={isAuthenticated ? <Navigate to="/" /> : <LoginForm />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <LoginForm />}
         />
         <Route
           path="/signup"
-          element={isAuthenticated ? <Navigate to="/" /> : <SignUpForm />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <SignUpForm />}
         />
         <Route
           path="/*"
-          element={isAuthenticated ? <MainApp /> : <Navigate to="/login" />}
+          element={isAuthenticated ? <MainApp /> : <Navigate to="/login" replace />}
         />
       </Routes>
     </AuthProvider>
