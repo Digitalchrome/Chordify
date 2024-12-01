@@ -1,10 +1,13 @@
 import { create } from 'zustand';
+import { VoicingType } from '../types/music';
 
 interface ChordSelectionState {
   selectedChordIndex: number;
   setSelectedChordIndex: (index: number) => void;
   showAdvancedFeatures: boolean;
   setShowAdvancedFeatures: (show: boolean) => void;
+  voicingType: VoicingType;
+  setVoicingType: (type: VoicingType) => void;
 }
 
 export const useChordSelectionStore = create<ChordSelectionState>((set) => ({
@@ -15,4 +18,6 @@ export const useChordSelectionStore = create<ChordSelectionState>((set) => ({
   }),
   showAdvancedFeatures: false,
   setShowAdvancedFeatures: (show) => set({ showAdvancedFeatures: show }),
+  voicingType: 'basic' as VoicingType,
+  setVoicingType: (type) => set({ voicingType: type }),
 }));

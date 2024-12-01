@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
-import { Music, Info } from 'lucide-react';
+import React, { useState, lazy, Suspense, useMemo } from 'react';
+import { Music } from 'lucide-react';
 import { CollapsibleSection } from './CollapsibleSection';
-import { ArpeggioVisualizer } from './ArpeggioVisualizer';
-import { ModalInterchange } from './ModalInterchange';
-import { VoiceLeadingVisualizer } from './VoiceLeadingVisualizer';
-import { ChordScaleVisualizer } from './ChordScaleVisualizer';
-import { TensionAnalysis } from './TensionAnalysis';
-import { ChordVisualization3D } from './ChordVisualization3D';
-import { HarmonicNetworkGraph } from './HarmonicNetworkGraph';
-import { PolyharmonicAnalysis } from './PolyharmonicAnalysis';
-import { PerformanceSuggestions } from './PerformanceSuggestions';
-import { ChordFunction } from '../types/music';
+import { ChordFunction, ScaleType, VoicingType } from '../types/music';
 import { Chord } from 'tonal';
+
+// Lazy load heavy components
+const ArpeggioVisualizer = lazy(() => import('./ArpeggioVisualizer'));
+const ModalInterchange = lazy(() => import('./ModalInterchange'));
+const VoiceLeadingVisualizer = lazy(() => import('./VoiceLeadingVisualizer'));
+const ChordScaleVisualizer = lazy(() => import('./ChordScaleVisualizer'));
+const TensionAnalysis = lazy(() => import('./TensionAnalysis'));
+const ChordVisualization3D = lazy(() => import('./ChordVisualization3D'));
+const HarmonicNetworkGraph = lazy(() => import('./HarmonicNetworkGraph'));
+const PolyharmonicAnalysis = lazy(() => import('./PolyharmonicAnalysis'));
+const PerformanceSuggestions = lazy(() => import('./PerformanceSuggestions'));
 
 interface ChordAnalysisProps {
   chord: string;
@@ -19,11 +21,24 @@ interface ChordAnalysisProps {
   romanNumeral: string;
   function: ChordFunction;
   substitutions?: string[];
-  scale: string;
+  scale: ScaleType;
+  voicingType?: VoicingType;
   onSubstitute: (chord: string) => void;
   progression: string[];
   functions: ChordFunction[];
 }
+
+const LoadingFallback = () => (
+  <div className="animate-pulse flex space-x-4">
+    <div className="flex-1 space-y-4 py-1">
+      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+      <div className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+      </div>
+    </div>
+  </div>
+);
 
 export const ChordAnalysis: React.FC<ChordAnalysisProps> = ({
   chord,
@@ -32,132 +47,107 @@ export const ChordAnalysis: React.FC<ChordAnalysisProps> = ({
   function: chordFunction,
   substitutions = [],
   scale,
+  voicingType = 'basic',
   onSubstitute,
   progression,
   functions,
 }) => {
-  const [activeTab, setActiveTab] = useState<'analysis' | 'arpeggio'>('analysis');
-  const chordNotes = Chord.get(chord).notes;
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+
+  const chordInfo = useMemo(() => {
+    try {
+      return Chord.get(chord);
+    } catch (error) {
+      console.error('Error parsing chord:', error);
+      return null;
+    }
+  }, [chord]);
+
+  if (!chordInfo) {
+    return <div>Invalid chord: {chord}</div>;
+  }
 
   return (
-    <div className="space-y-4 bg-white dark:bg-dark-800 rounded-lg p-4">
+    <div className="space-y-4 p-4 bg-white rounded-lg shadow">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Music className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {chord} Analysis
-          </h2>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`px-3 py-1 rounded-full text-sm ${
-              activeTab === 'analysis'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Analysis
-          </button>
-          <button
-            onClick={() => setActiveTab('arpeggio')}
-            className={`px-3 py-1 rounded-full text-sm ${
-              activeTab === 'arpeggio'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Arpeggios
-          </button>
-        </div>
+        <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+          <Music className="w-5 h-5 mr-2 text-indigo-600" />
+          Chord Analysis
+        </h3>
       </div>
 
-      {activeTab === 'analysis' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="space-y-4">
-            <CollapsibleSection title="Chord Structure" defaultOpen>
-              <ChordVisualization3D chord={chord} />
-            </CollapsibleSection>
+      <Suspense fallback={<LoadingFallback />}>
+        <CollapsibleSection
+          title="Chord Structure"
+          isOpen={activeSection === 'structure'}
+          onToggle={() => setActiveSection(activeSection === 'structure' ? null : 'structure')}
+        >
+          <ChordVisualization3D
+            chord={chord}
+            voicingType={voicingType}
+          />
+        </CollapsibleSection>
 
-            <CollapsibleSection title="Tension Analysis" defaultOpen>
-              <TensionAnalysis
-                chord={chord}
-                nextChord={nextChord}
-                function={chordFunction}
-                progression={progression}
-                functions={functions}
-              />
-            </CollapsibleSection>
+        <CollapsibleSection
+          title="Voice Leading"
+          isOpen={activeSection === 'voiceLeading'}
+          onToggle={() => setActiveSection(activeSection === 'voiceLeading' ? null : 'voiceLeading')}
+        >
+          <VoiceLeadingVisualizer
+            currentChord={chord}
+            nextChord={nextChord}
+            voicingType={voicingType}
+          />
+        </CollapsibleSection>
 
-            <CollapsibleSection title="Polyharmonic Analysis">
-              <PolyharmonicAnalysis
-                chord={chord}
-                progression={progression}
-              />
-            </CollapsibleSection>
+        <CollapsibleSection
+          title="Scales & Modes"
+          isOpen={activeSection === 'scales'}
+          onToggle={() => setActiveSection(activeSection === 'scales' ? null : 'scales')}
+        >
+          <ChordScaleVisualizer
+            chord={chord}
+            scale={scale}
+          />
+        </CollapsibleSection>
 
-            <CollapsibleSection title="Performance Suggestions">
-              <PerformanceSuggestions
-                chord={chord}
-                nextChord={nextChord}
-                scale={scale}
-              />
-            </CollapsibleSection>
+        <CollapsibleSection
+          title="Modal Interchange"
+          isOpen={activeSection === 'modal'}
+          onToggle={() => setActiveSection(activeSection === 'modal' ? null : 'modal')}
+        >
+          <ModalInterchange
+            chord={chord}
+            romanNumeral={romanNumeral}
+            function={chordFunction}
+            onSubstitute={onSubstitute}
+          />
+        </CollapsibleSection>
 
-            {nextChord && (
-              <CollapsibleSection title="Voice Leading">
-                <VoiceLeadingVisualizer
-                  currentChord={chordNotes}
-                  nextChord={Chord.get(nextChord).notes}
-                />
-              </CollapsibleSection>
-            )}
-          </div>
+        <CollapsibleSection
+          title="Harmonic Network"
+          isOpen={activeSection === 'network'}
+          onToggle={() => setActiveSection(activeSection === 'network' ? null : 'network')}
+        >
+          <HarmonicNetworkGraph
+            progression={progression}
+            functions={functions}
+            currentChord={chord}
+          />
+        </CollapsibleSection>
 
-          <div className="space-y-4">
-            <CollapsibleSection title="Harmonic Network" defaultOpen>
-              <HarmonicNetworkGraph
-                progression={progression}
-                functions={functions}
-              />
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Modal Interchange">
-              <ModalInterchange
-                chord={chord}
-                scale={scale}
-                onSelectChord={onSubstitute}
-              />
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Compatible Scales">
-              <ChordScaleVisualizer
-                chord={chord}
-                scale={scale}
-                currentKey={chord.match(/^[A-G][#b]?/)?.[0] || 'C'}
-              />
-            </CollapsibleSection>
-
-            {substitutions.length > 0 && (
-              <CollapsibleSection title="Chord Substitutions">
-                <div className="flex flex-wrap gap-2">
-                  {substitutions.map((sub, index) => (
-                    <button
-                      key={index}
-                      onClick={() => onSubstitute(sub)}
-                      className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-full text-sm transition-colors"
-                    >
-                      {sub}
-                    </button>
-                  ))}
-                </div>
-              </CollapsibleSection>
-            )}
-          </div>
-        </div>
-      ) : (
-        <ArpeggioVisualizer chord={chord} progression={progression} />
-      )}
+        <CollapsibleSection
+          title="Performance Suggestions"
+          isOpen={activeSection === 'performance'}
+          onToggle={() => setActiveSection(activeSection === 'performance' ? null : 'performance')}
+        >
+          <PerformanceSuggestions
+            chord={chord}
+            function={chordFunction}
+            voicingType={voicingType}
+          />
+        </CollapsibleSection>
+      </Suspense>
     </div>
   );
 };

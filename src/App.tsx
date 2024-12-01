@@ -1,143 +1,86 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as Tone from 'tone';
-import { Music, Book, Layers, RefreshCw, Settings } from 'lucide-react';
-
-// Components
-import { ChordDisplay } from './components/ChordDisplay';
-import { GeneratorControls } from './components/GeneratorControls';
-import { ProgressionHistory } from './components/ProgressionHistory';
-import { PlaybackControls } from './components/PlaybackControls';
-import { ChordAnalysis } from './components/ChordAnalysis';
-import { AdvancedAnalysis } from './components/AdvancedAnalysis';
-import { ThemeToggle } from './components/ThemeToggle';
-import { ChordVoicingLibrary } from './components/ChordVoicingLibrary';
-import { AdvancedScaleAnalysis } from './components/AdvancedScaleAnalysis';
-import { ProgressionVariationEngine } from './components/ProgressionVariationEngine';
-import { ChordVoicingCustomizer } from './components/ChordVoicingCustomizer';
-import { VoicingPresetManager } from './components/VoicingPresetManager';
-import { AuthProvider } from './components/auth/AuthProvider';
-import { LoginForm } from './components/auth/LoginForm';
-import { SignUpForm } from './components/auth/SignUpForm';
-
-// Hooks and Stores
-import { useDarkMode } from './hooks/useDarkMode';
-import { useVoicingStore } from './stores/voicingStore';
-import { useAuthStore } from './stores/authStore';
-
-// Utils and Types
-import { generateProgression } from './utils/chordGenerator';
-import { analyzeChordFunction, getChordSubstitutions } from './utils/chordAnalysis';
+import { Music, Book, RefreshCw, Settings } from 'lucide-react';
+import { ChordMode, VoicingType, ChordProgression, ScaleType, ChordFunction } from './types/music';
 import { audioEngine } from './utils/audioEngine';
-import { supabase } from './lib/supabase';
-import type { ChordMode, ProgressionLength, ChordProgression, ScaleType, ChordFunction } from './types/music';
+import { ChordDisplay } from './components/ChordDisplay';
+import { ChordAnalysis } from './components/ChordAnalysis';
+import ChordVisualization3D from './components/ChordVisualization3D';
+import { generateChordProgression } from './utils/progressionGenerator';
+
+const DEFAULT_PROGRESSION: ChordProgression = {
+  chords: ['Cmaj7', 'Dm7', 'G7', 'Cmaj7'],
+  mode: 'jazz',
+  length: 4,
+  key: 'C',
+  scale: 'major',
+  voicingType: 'basic',
+  romanNumerals: ['Imaj7', 'ii7', 'V7', 'Imaj7'],
+  functions: ['tonic', 'subdominant', 'dominant', 'tonic']
+};
 
 function App() {
-  const [isDark, setIsDark] = useDarkMode();
-  const isAuthenticated = useAuthStore((state) => state.session !== null);
-  const user = useAuthStore((state) => state.session?.user);
-  const signOut = useAuthStore((state) => state.signOut);
-  const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Check authentication status on mount
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setIsLoading(false);
-        if (!session && window.location.pathname !== '/signup') {
-          navigate('/login');
-        }
-      } catch (error) {
-        console.error('Error checking auth status:', error);
-        setIsLoading(false);
-      }
-    };
-    checkAuth();
-  }, [navigate]);
-
-  const handleSignOut = useCallback(async () => {
-    try {
-      await signOut();
-      navigate('/login', { replace: true });
-    } catch (error) {
-      console.error('Error signing out:', error);
-      // Still redirect to login on error to ensure user can't be stuck
-      navigate('/login', { replace: true });
-    }
-  }, [signOut, navigate]);
-
-  const [currentProgression, setCurrentProgression] = useState<ChordProgression>({
-    chords: ['Cmaj7', 'Dm7', 'G7', 'Cmaj7'],
-    mode: 'jazz',
-    length: 4,
-  });
-  
-  const [history, setHistory] = useState<ChordProgression[]>([]);
+  const [currentProgression, setCurrentProgression] = useState<ChordProgression>(DEFAULT_PROGRESSION);
+  const [audioInitialized, setAudioInitialized] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [tempo, setTempo] = useState(120);
-  const [currentKey, setCurrentKey] = useState('C');
+  const [currentKey, setCurrentKey] = useState<string>('C');
   const [currentScale, setCurrentScale] = useState<ScaleType>('major');
   const [selectedCadence, setSelectedCadence] = useState('');
   const [useExtendedVoicings, setUseExtendedVoicings] = useState(false);
   const [selectedChordIndex, setSelectedChordIndex] = useState<number>(-1);
-  const [showVoicingLibrary, setShowVoicingLibrary] = useState(false);
-  const [showScaleAnalysis, setShowScaleAnalysis] = useState(false);
-  const [showVariationEngine, setShowVariationEngine] = useState(false);
-  const [showVoicingCustomizer, setShowVoicingCustomizer] = useState(false);
-  const [audioInitialized, setAudioInitialized] = useState(false);
-  const { currentVoicings, setVoicing } = useVoicingStore();
+  const [showSettings, setShowSettings] = useState(false);
 
   const initializeAudio = useCallback(async () => {
     if (!audioInitialized) {
       try {
         await Tone.start();
-        await audioEngine.initializeAudioContext();
+        await audioEngine.initialize();
         setAudioInitialized(true);
       } catch (error) {
         console.error('Failed to initialize audio:', error);
-        // Show a user-friendly error message
         alert('Unable to initialize audio. Please check your browser settings and try again.');
       }
     }
   }, [audioInitialized]);
 
-  const handleInitAudio = useCallback(async () => {
-    await initializeAudio();
-  }, [initializeAudio]);
-
   useEffect(() => {
     const handleClick = () => {
       if (!audioInitialized) {
-        handleInitAudio().catch(console.error);
+        initializeAudio();
       }
     };
 
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, [audioInitialized, handleInitAudio]);
+  }, [audioInitialized, initializeAudio]);
+
+  const handleSaveProgression = useCallback(() => {
+    const savedProgressions = JSON.parse(localStorage.getItem('savedProgressions') || '[]');
+    savedProgressions.unshift(currentProgression);
+    localStorage.setItem('savedProgressions', JSON.stringify(savedProgressions.slice(0, 10)));
+  }, [currentProgression]);
 
   const handleGenerate = useCallback(async () => {
     try {
       await initializeAudio();
-      const newProgression = generateProgression(
+      const newProgression = await generateChordProgression(
         currentProgression.mode,
         currentProgression.length,
         {
-          selectedCadence,
-          useExtendedVoicings,
           key: currentKey,
           scale: currentScale,
+          cadence: selectedCadence,
+          useExtendedVoicings,
+          voicingType: currentProgression.voicingType || 'basic'
         }
       );
       
       setCurrentProgression({
         ...newProgression,
-        mode: currentProgression.mode,
-        length: currentProgression.length,
+        romanNumerals: newProgression.romanNumerals || currentProgression.romanNumerals,
+        functions: newProgression.functions || currentProgression.functions
       });
-      setHistory(prev => [newProgression, ...prev].slice(0, 10));
       setSelectedChordIndex(-1);
     } catch (error) {
       console.error('Error generating progression:', error);
@@ -146,308 +89,170 @@ function App() {
   }, [currentProgression, selectedCadence, useExtendedVoicings, currentKey, currentScale, initializeAudio]);
 
   const handleChordChange = (index: number, newChord: string) => {
-    const newChords = [...currentProgression.chords];
-    newChords[index] = newChord;
-    setCurrentProgression({ ...currentProgression, chords: newChords });
+    setCurrentProgression(prev => ({
+      ...prev,
+      chords: prev.chords.map((chord, i) => i === index ? newChord : chord)
+    }));
   };
 
   const handleModeChange = (mode: ChordMode) => {
-    setCurrentProgression({ ...currentProgression, mode });
+    setCurrentProgression(prev => ({ ...prev, mode }));
     setSelectedCadence('');
   };
 
-  const handleLengthChange = (length: ProgressionLength) => {
-    setCurrentProgression({ ...currentProgression, length });
+  const handleVoicingTypeChange = (voicingType: VoicingType) => {
+    setCurrentProgression(prev => ({ ...prev, voicingType }));
   };
 
   const handlePlay = async () => {
-    await initializeAudio();
     if (isPlaying) {
-      audioEngine.stopAll();
       setIsPlaying(false);
+      audioEngine.stopAll();
       return;
     }
 
-    setIsPlaying(true);
-    await audioEngine.playProgression(currentProgression.chords, tempo);
-    setIsPlaying(false);
-  };
-
-  const handleTempoChange = (newTempo: number) => {
-    setTempo(newTempo);
-  };
-
-  const handleHistorySelect = (progression: ChordProgression) => {
-    setCurrentProgression(progression);
-    setSelectedChordIndex(-1);
-  };
-
-  const handleVoicingSelect = (voicing: string[]) => {
-    if (selectedChordIndex >= 0) {
-      handleChordChange(selectedChordIndex, voicing.join(''));
+    try {
+      await initializeAudio();
+      setIsPlaying(true);
+      await audioEngine.playProgression(currentProgression.chords, tempo);
+      setIsPlaying(false);
+    } catch (error) {
+      console.error('Error playing progression:', error);
+      setIsPlaying(false);
     }
   };
 
-  const handleVariationSelect = (variation: string[]) => {
-    setCurrentProgression({
-      ...currentProgression,
-      chords: variation,
-    });
-  };
-
-  const handleVoicingChange = (notes: string[]) => {
-    if (selectedChordIndex >= 0) {
-      setVoicing(currentProgression.chords[selectedChordIndex], notes, 'custom');
-    }
-  };
-
-  const getChordFunction = (index: number): ChordFunction => {
-    return analyzeChordFunction(
-      currentProgression.chords[index],
-      currentKey,
-      currentProgression.romanNumerals?.[index] || ''
-    );
-  };
-
-  const getSubstitutions = (index: number): string[] => {
-    return getChordSubstitutions(
-      currentProgression.chords[index],
-      currentProgression.romanNumerals?.[index] || '',
-      getChordFunction(index)
-    );
-  };
-
-  const MainApp = useMemo(() => () => (
-    <div className={`min-h-screen ${isDark ? 'dark bg-gray-900' : 'bg-gray-100'}`}>
-      <nav className="bg-gray-800 p-4">
-        <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold text-white">Chordify</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-gray-300">{user?.email}</span>
-            <button
-              onClick={handleSignOut}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </nav>
-      
-      <div className="max-w-7xl mx-auto space-y-8">
-        <header className="flex items-center justify-between">
-          <div className="text-center flex-1">
-            <h1 className="text-4xl font-bold text-indigo-900 dark:text-indigo-100 mb-2">
-              Chord Progression Generator
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="container mx-auto px-4 py-8">
+        <div className="space-y-8">
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
+              <Music className="w-8 h-8 mr-2" />
+              Chordify
             </h1>
-            <p className="text-indigo-600 dark:text-indigo-400">
-              Create beautiful chord progressions in different styles
-            </p>
-          </div>
-          <ThemeToggle isDark={isDark} onToggle={() => setIsDark(!isDark)} />
-        </header>
-
-        {/* Voicing Customization Panel */}
-        <div className="flex justify-end mb-4">
-          <button
-            onClick={() => setShowVoicingCustomizer(!showVoicingCustomizer)}
-            className="flex items-center px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            {showVoicingCustomizer ? 'Hide Voicing Editor' : 'Show Voicing Editor'}
-          </button>
-        </div>
-
-        {showVoicingCustomizer && selectedChordIndex >= 0 && (
-          <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Chord Voicing Editor</h2>
-                <button
-                  onClick={() => setShowVoicingCustomizer(false)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ChordVoicingCustomizer
-                  chord={currentProgression.chords[selectedChordIndex]}
-                  onChange={handleVoicingChange}
-                  initialVoicing={currentVoicings[currentProgression.chords[selectedChordIndex]]?.notes}
-                />
-                <VoicingPresetManager />
-              </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleGenerate}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center"
+              >
+                <RefreshCw className="w-5 h-5 mr-2" />
+                Generate
+              </button>
+              <button
+                onClick={handleSaveProgression}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center"
+              >
+                <Book className="w-5 h-5 mr-2" />
+                Save
+              </button>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              >
+                <Settings className="w-6 h-6" />
+              </button>
             </div>
           </div>
-        )}
 
-        {!audioInitialized && (
-          <div 
-            className="fixed bottom-4 right-4 p-4 bg-yellow-800 rounded-lg shadow-lg cursor-pointer z-50"
-            onClick={handleInitAudio}
-          >
-            <p className="text-yellow-100">
-              Click anywhere to enable audio playback
-            </p>
-          </div>
-        )}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <ChordDisplay
+                chords={currentProgression.chords}
+                mode={currentProgression.mode}
+                romanNumerals={currentProgression.romanNumerals}
+                onChordChange={handleChordChange}
+                onChordSelect={setSelectedChordIndex}
+              />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <GeneratorControls
-              mode={currentProgression.mode}
-              length={currentProgression.length}
-              rootKey={currentKey}
-              scale={currentScale}
-              onModeChange={handleModeChange}
-              onLengthChange={handleLengthChange}
-              onKeyChange={setCurrentKey}
-              onScaleChange={setCurrentScale}
-              onGenerate={handleGenerate}
-              useExtendedVoicings={useExtendedVoicings}
-              onVoicingsChange={setUseExtendedVoicings}
-              selectedCadence={selectedCadence}
-              onCadenceChange={setSelectedCadence}
-            />
+              {selectedChordIndex !== -1 && (
+                <ChordVisualization3D
+                  chord={currentProgression.chords[selectedChordIndex]}
+                  voicingType={currentProgression.voicingType}
+                />
+              )}
+            </div>
 
-            <ChordDisplay
-              chords={currentProgression.chords}
-              mode={currentProgression.mode}
-              romanNumerals={currentProgression.romanNumerals}
-              onChordChange={handleChordChange}
-              onChordSelect={setSelectedChordIndex}
-            />
-
-            <PlaybackControls
-              isPlaying={isPlaying}
-              tempo={tempo}
-              onPlay={handlePlay}
-              onTempoChange={handleTempoChange}
-            />
-
-            {selectedChordIndex !== -1 && (
-              <>
-                <div className="flex gap-2 mb-4">
-                  <button
-                    onClick={() => setShowVoicingLibrary(!showVoicingLibrary)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                      showVoicingLibrary 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'bg-white text-indigo-600 border border-indigo-200'
-                    }`}
-                  >
-                    <Music className="w-4 h-4" />
-                    Voicing Library
-                  </button>
-                  <button
-                    onClick={() => setShowScaleAnalysis(!showScaleAnalysis)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                      showScaleAnalysis 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'bg-white text-indigo-600 border border-indigo-200'
-                    }`}
-                  >
-                    <Book className="w-4 h-4" />
-                    Scale Analysis
-                  </button>
-                  <button
-                    onClick={() => setShowVariationEngine(!showVariationEngine)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                      showVariationEngine 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'bg-white text-indigo-600 border border-indigo-200'
-                    }`}
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Variations
-                  </button>
-                </div>
-
+            <div className="space-y-6">
+              {selectedChordIndex !== -1 && (
                 <ChordAnalysis
                   chord={currentProgression.chords[selectedChordIndex]}
                   nextChord={currentProgression.chords[selectedChordIndex + 1]}
                   romanNumeral={currentProgression.romanNumerals?.[selectedChordIndex] || ''}
-                  function={getChordFunction(selectedChordIndex)}
-                  substitutions={getSubstitutions(selectedChordIndex)}
-                  scale={currentScale}
+                  function={currentProgression.functions?.[selectedChordIndex] || 'tonic'}
+                  scale={currentProgression.scale || 'major'}
+                  voicingType={currentProgression.voicingType}
                   onSubstitute={(newChord) => handleChordChange(selectedChordIndex, newChord)}
                   progression={currentProgression.chords}
-                  functions={currentProgression.chords.map((_, i) => getChordFunction(i))}
+                  functions={currentProgression.functions || []}
                 />
+              )}
 
-                {showVoicingLibrary && (
-                  <ChordVoicingLibrary
-                    chord={currentProgression.chords[selectedChordIndex]}
-                    onSelectVoicing={handleVoicingSelect}
-                  />
-                )}
+              {showSettings && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Settings</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Voicing Type
+                      </label>
+                      <select
+                        value={currentProgression.voicingType}
+                        onChange={(e) => handleVoicingTypeChange(e.target.value as VoicingType)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      >
+                        <option value="basic">Basic</option>
+                        <option value="jazz">Jazz</option>
+                        <option value="spread">Spread</option>
+                        <option value="close">Close</option>
+                        <option value="drop2">Drop 2</option>
+                        <option value="quartal">Quartal</option>
+                      </select>
+                    </div>
 
-                {showScaleAnalysis && (
-                  <AdvancedScaleAnalysis
-                    chord={currentProgression.chords[selectedChordIndex]}
-                    scale={currentScale}
-                    currentKey={currentKey}
-                  />
-                )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Playback Speed
+                      </label>
+                      <div className="flex items-center space-x-4">
+                        <input
+                          type="range"
+                          min="60"
+                          max="200"
+                          value={tempo}
+                          onChange={(e) => setTempo(Number(e.target.value))}
+                          className="w-full"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {tempo} BPM
+                        </span>
+                      </div>
+                    </div>
 
-                {showVariationEngine && (
-                  <ProgressionVariationEngine
-                    progression={currentProgression.chords}
-                    mode={currentProgression.mode}
-                    onSelectVariation={handleVariationSelect}
-                  />
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="lg:col-span-1">
-            <ProgressionHistory
-              history={history}
-              onSelect={handleHistorySelect}
-              currentProgression={currentProgression}
-            />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Extended Voicings
+                      </label>
+                      <div className="mt-1">
+                        <input
+                          type="checkbox"
+                          checked={useExtendedVoicings}
+                          onChange={(e) => setUseExtendedVoicings(e.target.checked)}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 mr-2"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Use extended chord voicings
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
-        {selectedChordIndex !== -1 && (
-          <AdvancedAnalysis
-            progression={currentProgression}
-            currentKey={currentKey}
-            scale={currentScale}
-          />
-        )}
       </div>
     </div>
-  ), [isDark, user, handleSignOut, currentProgression, history, isPlaying, tempo, showVoicingLibrary, 
-      showScaleAnalysis, showVariationEngine, showVoicingCustomizer, audioInitialized, currentVoicings]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
-
-  return (
-    <AuthProvider>
-      <Routes>
-        <Route
-          path="/login"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <LoginForm />}
-        />
-        <Route
-          path="/signup"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <SignUpForm />}
-        />
-        <Route
-          path="/*"
-          element={isAuthenticated ? <MainApp /> : <Navigate to="/login" replace />}
-        />
-      </Routes>
-    </AuthProvider>
   );
 }
 

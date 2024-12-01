@@ -3,9 +3,11 @@ export type ProgressionLength = 4 | 8 | 12 | 16;
 export type VoicingStyle = 'close' | 'spread' | 'drop2' | 'quartal';
 export type ScaleType = 'major' | 'minor' | 'dorian' | 'mixolydian' | 'lydian' | 'phrygian' | 'locrian';
 export type ChordFunction = 'tonic' | 'subdominant' | 'dominant' | 'secondary';
+export type VoicingType = 'basic' | 'extended' | 'custom' | 'jazz' | 'quartal' | 'close' | 'spread' | 'drop2';
 
 export interface VoicingOptions {
   style: VoicingStyle;
+  type: VoicingType;
   extensions: boolean;
   smoothVoiceLeading: boolean;
 }
@@ -20,6 +22,7 @@ export interface ChordProgression {
   scale?: ScaleType;
   romanNumerals?: string[];
   functions?: ChordFunction[];
+  voicingType?: VoicingType;
 }
 
 export const DEFAULT_PROGRESSION: ChordProgression = {
@@ -28,4 +31,5 @@ export const DEFAULT_PROGRESSION: ChordProgression = {
   length: 4,
   key: 'C',
   scale: 'major',
+  voicingType: 'basic'
 };

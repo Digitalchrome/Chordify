@@ -7,7 +7,7 @@ class AudioEngine {
   private oscillators: OscillatorNode[] = [];
   private isPlaying: boolean = false;
 
-  private initializeAudioContext() {
+  async initialize() {
     if (!this.audioContext) {
       // Create audio context only after user interaction
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -18,9 +18,7 @@ class AudioEngine {
     }
     
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume().catch(err => {
-        console.warn('Failed to resume audio context:', err);
-      });
+      await this.audioContext.resume();
     }
   }
 
@@ -94,7 +92,7 @@ class AudioEngine {
 
   public async playChord(chordName: string, duration: number = 1): Promise<void> {
     try {
-      this.initializeAudioContext();
+      await this.initialize();
       if (!this.audioContext || !this.gainNode) return;
 
       this.stopAll();
@@ -150,7 +148,7 @@ class AudioEngine {
     tempo: number = 120
   ): Promise<void> {
     try {
-      this.initializeAudioContext();
+      await this.initialize();
       if (!this.audioContext) return;
 
       if (this.isPlaying) {

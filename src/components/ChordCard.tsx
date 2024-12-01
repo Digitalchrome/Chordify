@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Music, Play, Edit2, X } from 'lucide-react';
 import { audioEngine } from '../utils/audioEngine';
 import { CHORD_POOLS, NOTES } from '../utils/chordDatabase';
-import { useChordSelectionStore } from '../stores/chordSelectionStore';
+import { ChordMode } from '../types/music';
 
 const CHORD_QUALITIES = {
   basic: ['', 'm', 'dim', 'aug'],
@@ -11,14 +11,15 @@ const CHORD_QUALITIES = {
   altered: ['7#5', '7b5', '7#9', '7b9', '7#11', '7b13', '7alt'],
   suspended: ['sus2', 'sus4', '7sus4'],
   added: ['add9', '6', '6/9'],
-};
+} as const;
 
 interface ChordCardProps {
   chord: string;
   index: number;
-  mode: string;
+  mode: ChordMode;
   romanNumeral?: string;
   onChordChange: (index: number, newChord: string) => void;
+  isSelected?: boolean;
 }
 
 export const ChordCard: React.FC<ChordCardProps> = ({
@@ -27,16 +28,17 @@ export const ChordCard: React.FC<ChordCardProps> = ({
   mode,
   romanNumeral,
   onChordChange,
+  isSelected = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const { selectedChordIndex, setSelectedChordIndex } = useChordSelectionStore();
   
   // Parse current chord into root and quality
   const chordRoot = chord.match(/^[A-G][#b]?/)?.[0] || 'C';
   const chordQuality = chord.slice(chordRoot.length);
   
-  const handlePlay = async () => {
+  const handlePlay = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent's onClick
     try {
       setIsPlaying(true);
       await audioEngine.playChord(chord, 2);
@@ -44,12 +46,6 @@ export const ChordCard: React.FC<ChordCardProps> = ({
       console.error('Error playing chord:', error);
     } finally {
       setIsPlaying(false);
-    }
-  };
-
-  const handleClick = () => {
-    if (!isEditing) {
-      setSelectedChordIndex(index);
     }
   };
 
@@ -62,9 +58,9 @@ export const ChordCard: React.FC<ChordCardProps> = ({
     onChordChange(index, `${chordRoot}${quality}`);
   };
 
-  const getQualityCategory = (quality: string): string => {
+  const getQualityCategory = (quality: string): keyof typeof CHORD_QUALITIES => {
     for (const [category, qualities] of Object.entries(CHORD_QUALITIES)) {
-      if (qualities.includes(quality)) return category;
+      if (qualities.includes(quality)) return category as keyof typeof CHORD_QUALITIES;
     }
     return 'basic';
   };
@@ -72,17 +68,13 @@ export const ChordCard: React.FC<ChordCardProps> = ({
   return (
     <div 
       className={`flex flex-col items-center justify-center p-4 rounded-lg transition-all
-        ${selectedChordIndex === index 
+        ${isSelected 
           ? 'bg-indigo-100 ring-2 ring-indigo-500' 
           : 'bg-indigo-50 hover:bg-indigo-100'}`}
-      onClick={handleClick}
     >
       <div className="flex justify-between w-full mb-2">
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handlePlay();
-          }}
+          onClick={handlePlay}
           disabled={isPlaying}
           className={`p-1 ${isPlaying ? 'text-indigo-400' : 'text-indigo-600 hover:text-indigo-800'}`}
           title="Play chord"

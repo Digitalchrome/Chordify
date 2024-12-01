@@ -3,10 +3,11 @@ import { ChordCard } from './ChordCard';
 import { Download } from 'lucide-react';
 import { exportToMidi } from '../utils/midiExporter';
 import { useChordSelectionStore } from '../stores/chordSelectionStore';
+import { ChordMode } from '../types/music';
 
 interface ChordDisplayProps {
   chords: string[];
-  mode: string;
+  mode: ChordMode;
   romanNumerals?: string[];
   onChordChange: (index: number, newChord: string) => void;
 }
@@ -17,7 +18,7 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
   romanNumerals = [],
   onChordChange,
 }) => {
-  const { setSelectedChordIndex } = useChordSelectionStore();
+  const { selectedChordIndex, setSelectedChordIndex } = useChordSelectionStore();
 
   const handleExportMidi = () => {
     if (!chords.length) return;
@@ -27,10 +28,6 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
     } catch (error) {
       console.error('Failed to export MIDI:', error);
     }
-  };
-
-  const handleChordSelect = (index: number) => {
-    setSelectedChordIndex(index);
   };
 
   if (!Array.isArray(chords)) {
@@ -44,7 +41,7 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
         {chords.map((chord, index) => (
           <div
             key={`${index}-${chord}`}
-            onClick={() => handleChordSelect(index)}
+            onClick={() => setSelectedChordIndex(index)}
             className="cursor-pointer transition-transform hover:scale-105"
           >
             <ChordCard
@@ -53,19 +50,20 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
               mode={mode}
               romanNumeral={romanNumerals[index]}
               onChordChange={onChordChange}
+              isSelected={selectedChordIndex === index}
             />
           </div>
         ))}
       </div>
-      
-      <button
-        onClick={handleExportMidi}
-        className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors"
-        disabled={!chords.length}
-      >
-        <Download size={20} />
-        Export MIDI
-      </button>
+      {chords.length > 0 && (
+        <button
+          onClick={handleExportMidi}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
+          <Download className="w-4 h-4" />
+          Export MIDI
+        </button>
+      )}
     </div>
   );
 };
