@@ -7,5 +7,20 @@
   ],
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "env": {
+    "VITE_SUPABASE_URL": "https://omcsshclfsaskzrmftdz.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tY3NzaGNsZnNhc2t6cm1mdGR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI5NzMxNzUsImV4cCI6MjA0ODU0OTE3NX0.jqBI5syJ1y9Xehxgj25py4mSnQrMqgpONZfo2NggY9A"
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
 }
