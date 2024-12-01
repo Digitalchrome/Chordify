@@ -32,25 +32,26 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signUp: async (email: string, password: string) => {
     try {
-      // First, try to sign up
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
+        options: {
+          data: {
+            email_confirmed: true
+          }
+        }
       });
 
-      if (signUpError) throw signUpError;
+      if (error) throw error;
+      
+      if (data?.session) {
+        set({ session: data.session });
+        return { success: true, message: 'Account created successfully!' };
+      }
 
-      // If signup successful, immediately sign in
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      if (signInError) throw signInError;
-
-      set({ session: signInData.session });
-      return { success: true, message: 'Account created and logged in successfully!' };
+      return { success: false, message: 'Failed to create account. Please try signing in.' };
     } catch (error: any) {
+      console.error('Signup error:', error);
       return { success: false, message: error.message };
     }
   },
