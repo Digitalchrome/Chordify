@@ -21,6 +21,7 @@ export const SignUpForm: React.FC = () => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    console.log('Starting signup process...'); // Debug log
 
     // Validate password
     const passwordError = validatePassword(password);
@@ -30,18 +31,21 @@ export const SignUpForm: React.FC = () => {
     }
 
     setIsLoading(true);
+    console.log('Attempting signup with email:', email); // Debug log
 
     try {
       const result = await signUp(email, password);
+      console.log('Signup result:', result); // Debug log
+
       if (result.success) {
         setSuccess(result.message || 'Sign up successful!');
-        // Clear form
         setEmail('');
         setPassword('');
       } else {
         setError(result.message || 'Failed to sign up');
       }
     } catch (err) {
+      console.error('Signup error:', err); // Debug log
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
@@ -59,11 +63,7 @@ export const SignUpForm: React.FC = () => {
         )}
         {success && (
           <div className="bg-green-500 text-white p-3 rounded mb-4">
-            <p className="mb-2">{success}</p>
-            <p className="text-sm">
-              Please check your email and click the verification link before attempting to sign in.
-              The email might take a few minutes to arrive and could be in your spam folder.
-            </p>
+            {success}
           </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">

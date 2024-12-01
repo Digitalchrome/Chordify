@@ -2,13 +2,13 @@ import React from 'react';
 import { ChordCard } from './ChordCard';
 import { Download } from 'lucide-react';
 import { exportToMidi } from '../utils/midiExporter';
+import { useChordSelectionStore } from '../stores/chordSelectionStore';
 
 interface ChordDisplayProps {
   chords: string[];
   mode: string;
   romanNumerals?: string[];
   onChordChange: (index: number, newChord: string) => void;
-  onChordSelect: (index: number) => void;
 }
 
 export const ChordDisplay: React.FC<ChordDisplayProps> = ({
@@ -16,8 +16,9 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
   mode,
   romanNumerals = [],
   onChordChange,
-  onChordSelect,
 }) => {
+  const { setSelectedChordIndex } = useChordSelectionStore();
+
   const handleExportMidi = () => {
     if (!chords.length) return;
     
@@ -26,6 +27,10 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
     } catch (error) {
       console.error('Failed to export MIDI:', error);
     }
+  };
+
+  const handleChordSelect = (index: number) => {
+    setSelectedChordIndex(index);
   };
 
   if (!Array.isArray(chords)) {
@@ -39,7 +44,7 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({
         {chords.map((chord, index) => (
           <div
             key={`${index}-${chord}`}
-            onClick={() => onChordSelect(index)}
+            onClick={() => handleChordSelect(index)}
             className="cursor-pointer transition-transform hover:scale-105"
           >
             <ChordCard
