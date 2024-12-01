@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Music, Play, Edit2, X } from 'lucide-react';
 import { audioEngine } from '../utils/audioEngine';
 import { CHORD_POOLS, NOTES } from '../utils/chordDatabase';
+import { useChordSelectionStore } from '../stores/chordSelectionStore';
 
 const CHORD_QUALITIES = {
   basic: ['', 'm', 'dim', 'aug'],
@@ -29,6 +30,7 @@ export const ChordCard: React.FC<ChordCardProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const { selectedChordIndex, setSelectedChordIndex } = useChordSelectionStore();
   
   // Parse current chord into root and quality
   const chordRoot = chord.match(/^[A-G][#b]?/)?.[0] || 'C';
@@ -42,6 +44,12 @@ export const ChordCard: React.FC<ChordCardProps> = ({
       console.error('Error playing chord:', error);
     } finally {
       setIsPlaying(false);
+    }
+  };
+
+  const handleClick = () => {
+    if (!isEditing) {
+      setSelectedChordIndex(index);
     }
   };
 
@@ -62,10 +70,19 @@ export const ChordCard: React.FC<ChordCardProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-4 bg-indigo-50 rounded-lg transition-all hover:bg-indigo-100">
+    <div 
+      className={`flex flex-col items-center justify-center p-4 rounded-lg transition-all
+        ${selectedChordIndex === index 
+          ? 'bg-indigo-100 ring-2 ring-indigo-500' 
+          : 'bg-indigo-50 hover:bg-indigo-100'}`}
+      onClick={handleClick}
+    >
       <div className="flex justify-between w-full mb-2">
         <button
-          onClick={handlePlay}
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePlay();
+          }}
           disabled={isPlaying}
           className={`p-1 ${isPlaying ? 'text-indigo-400' : 'text-indigo-600 hover:text-indigo-800'}`}
           title="Play chord"
@@ -73,7 +90,10 @@ export const ChordCard: React.FC<ChordCardProps> = ({
           <Play className="w-5 h-5" />
         </button>
         <button
-          onClick={() => setIsEditing(!isEditing)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsEditing(!isEditing);
+          }}
           className="p-1 text-indigo-600 hover:text-indigo-800"
           title={isEditing ? 'Close editor' : 'Edit chord'}
         >
@@ -82,7 +102,7 @@ export const ChordCard: React.FC<ChordCardProps> = ({
       </div>
 
       {isEditing ? (
-        <div className="w-full space-y-2">
+        <div className="w-full space-y-2" onClick={(e) => e.stopPropagation()}>
           <select
             value={chordRoot}
             onChange={handleRootChange}
@@ -106,13 +126,13 @@ export const ChordCard: React.FC<ChordCardProps> = ({
                     <button
                       key={quality}
                       onClick={() => handleQualityChange(quality)}
-                      className={`px-2 py-1 text-xs rounded ${
+                      className={`px-2 py-1 text-xs rounded-md ${
                         quality === chordQuality
                           ? 'bg-indigo-600 text-white'
-                          : 'bg-white text-indigo-600 hover:bg-indigo-50'
-                      } border border-indigo-200`}
+                          : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                      }`}
                     >
-                      {quality || '(major)'}
+                      {quality || '♮'}
                     </button>
                   ))}
                 </div>
@@ -121,20 +141,13 @@ export const ChordCard: React.FC<ChordCardProps> = ({
           </div>
         </div>
       ) : (
-        <>
-          <Music className="w-6 h-6 text-indigo-600 mb-2" />
-          <span className="text-xl font-semibold text-indigo-700">
-            {chordRoot}
-            <span className="text-lg">{chordQuality || ''}</span>
-          </span>
+        <div className="text-center">
+          <div className="text-lg font-semibold text-gray-800">{chord}</div>
           {romanNumeral && (
-            <span className="text-sm font-medium text-indigo-500 mt-1">
-              {romanNumeral}
-            </span>
+            <div className="text-sm text-gray-500">{romanNumeral}</div>
           )}
-        </>
+        </div>
       )}
-      <span className="text-sm text-indigo-500 mt-2">Bar {index + 1}</span>
     </div>
   );
 };
